@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harami Machhar — Aangan After Dark</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #fff3d3;
+    --gold: #ffd166;
+    --panel: rgba(31, 25, 45, .88);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    color: var(--ink);
+    background:
+      radial-gradient(ellipse at 50% 0%, #49345d 0, #211d37 48%, #121522 100%);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .game { width: min(100%, 1000px); }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 10px;
+  }
+  h1 {
+    margin: 0;
+    color: var(--gold);
+    font-size: clamp(1.25rem, 3vw, 2rem);
+    letter-spacing: .03em;
+    text-shadow: 0 2px 15px #ffae4380;
+  }
+  .hud { display: flex; align-items: center; gap: 10px; }
+  .score, .stage-count {
+    border: 1px solid #ffd16666;
+    border-radius: 999px;
+    background: var(--panel);
+    padding: 9px 16px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .ammo {
+    border: 1px solid #ffd16666;
+    border-radius: 999px;
+    background: var(--panel);
+    padding: 9px 14px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .score span, .stage-count span, .ammo span { color: var(--gold); }
+  .ammo.reloading { border-color: #ff9a7666; color: #ffd2b8; }
+  .ammo.reloading span { color: #ffb18e; }
+  button {
+    border: 0;
+    border-radius: 999px;
+    padding: 10px 16px;
+    color: #281c2e;
+    background: var(--gold);
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 3px 0 #c17b38;
+  }
+  button:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  button:focus-visible { outline: 3px solid white; outline-offset: 3px; }
+  .stage {
+    position: relative;
+    overflow: hidden;
+    border: 2px solid #e6b66e;
+    border-radius: 18px;
+    background: #22213b;
+    box-shadow: 0 20px 60px #080915a8, 0 0 30px #f4b65b20;
+  }
+  canvas { display: block; width: 100%; aspect-ratio: 8 / 5; cursor: crosshair; }
+  .touch-controls { display: none; }
+  .mobile-hint { display: none; }
+  .hint {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    max-width: calc(100% - 24px);
+    padding: 7px 12px;
+    border: 1px solid #ffffff27;
+    border-radius: 999px;
+    color: #fff7df;
+    background: #19182cc9;
+    font-size: clamp(.68rem, 1.7vw, .83rem);
+    text-align: center;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .subline { margin: 9px 4px 0; color: #d3c8dd; font-size: .85rem; text-align: center; }
+  @media (max-width: 600px) {
+    body { padding: 10px; }
+    header { align-items: center; flex-wrap: wrap; }
+    .game h1 { flex: 1 1 100%; }
+    .hud { flex-wrap: wrap; gap: 6px; margin-left: auto; }
+    .score, .stage-count, .ammo, button { padding: 8px 10px; font-size: .85rem; }
+  }
+  @media (max-width: 760px) {
+    canvas { touch-action: none; cursor: default; }
+    .desktop-hint { display: none; }
+    .mobile-hint { display: block; }
+    .touch-controls {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .touch-controls button {
+      min-height: 56px;
+      padding: 12px 8px;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .touch-controls .touch-fire {
+      color: #fff8e9;
+      background: #b94d42;
+      box-shadow: 0 3px 0 #77352f;
+      font-size: 1rem;
+    }
+  }
+</style>
+</head>
+<body>
+<main class="game">
+  <header>
+    <h1>🦟 Harami Machhar</h1>
+    <div class="hud">
+      <div class="score" aria-live="polite">Score: <span id="score">0</span></div>
+      <div class="stage-count" aria-live="polite">Stage: <span id="stage">1/10</span></div>
+      <div class="ammo" id="ammo" aria-live="polite">Ammo: <span id="ammoCount">7</span><span id="reloadStatus"></span></div>
+      <button id="restart" type="button">Restart ↻</button>
+    </div>
+  </header>
+  <div class="stage">
+    <canvas id="game" aria-label="A cartoon mosquito-catching game. Use mouse, arrow keys, or touch to aim; click, press Space, or use Fire to shoot."></canvas>
+    <div class="hint desktop-hint">AIM: mouse / ← → &nbsp;·&nbsp; FIRE: click / Space</div>
+    <div class="hint mobile-hint">Swipe on the scene to aim · Tap FIRE to shoot</div>
+  </div>
+  <div class="touch-controls" aria-label="Touch controls">
+    <button id="aimLeft" type="button" aria-label="Aim left">◀ Aim</button>
+    <button id="touchFire" class="touch-fire" type="button" aria-label="Fire">FIRE</button>
+    <button id="aimRight" type="button" aria-label="Aim right">Aim ▶</button>
+  </div>
+  <p class="subline">A peaceful aangan. One very un-peaceful machhar. Sound starts when you play.</p>
+</main>
+<script>
+(() => {
+  "use strict";
+  const canvas = document.querySelector("#game");
+  const ctx = canvas.getContext("2d");
+  const scoreLabel = document.querySelector("#score");
+  const stageLabel = document.querySelector("#stage");
+  const ammoLabel = document.querySelector("#ammo");
+  const ammoCount = document.querySelector("#ammoCount");
+  const reloadStatus = document.querySelector("#reloadStatus");
+  const restartButton = document.querySelector("#restart");
+  const touchFireButton = document.querySelector("#touchFire");
+  const aimLeftButton = document.querySelector("#aimLeft");
+  const aimRightButton = document.querySelector("#aimRight");
+  const W = 960, H = 600;
+  const MAGAZINE_SIZE = 7;
+  const MAX_STAGES = 10;
+  const STAGE_TRANSITION_DURATION = 2.2;
+  const hero = { x: 470, y: 424 };
+  const lines = [
+    "Arre, neend ka bhi koi haq hota hai!",
+    "Aaj machhar ki khair nahi!",
+    "Itna chhota, attitude itna bada?",
+    "Aangan mein hero ek hi hai, bhai!"
+  ];
+  const hitLines = [
+    "Aa gaya na aukaat me!"
+  ];
+  const stars = Array.from({ length: 90 }, (_, i) => ({
+    x: (i * 197 + 31) % W, y: (i * 83 + 17) % 310,
+    r: .7 + (i % 4) * .35, phase: i * .73
+  }));
+  let score = 0, stage = 1, gameWon = false;
+  let ammo = MAGAZINE_SIZE, reloadTimer = 0, aim = -1.05;
+  let keys = { left: false, right: false };
+  let mosquito, bullets = [], puffs = [], flash = 0;
+  let transitionTimer = 0, transitionStage = 0;
+  let bubble = { text: "Shhh… raat ki duty shuru!", until: 3.5 };
+  let elapsed = 0, lastTime = 0, audio = null, buzz = null;
+  let scale = 1, pixelRatio = 1;
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(rect.width * pixelRatio);
+    canvas.height = Math.round(rect.height * pixelRatio);
+    scale = rect.width / W;
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  function spawnMosquito() {
+    const x = 500 + Math.random() * 260, y = 185 + Math.random() * 120;
+    mosquito = { x, y, targetX: x, targetY: y, targetTimer: 0,
+      lastDirection: Math.random() * Math.PI * 2,
+      vx: 0, vy: 0, speed: 1 + (stage - 1) * .16,
+      dodgeCooldown: 0, dodgeFlash: 0, radius: 25, alive: true };
+  }
+  function say(text, duration = 2.2, speaker = "hero") {
+    bubble = { text, speaker, until: elapsed + duration };
+  }
+  function updateAmmoUI() {
+    ammoCount.textContent = String(ammo);
+    const reloading = reloadTimer > 0;
+    ammoLabel.classList.toggle("reloading", reloading);
+    reloadStatus.textContent = reloading ? ` · Reloading ${Math.ceil(reloadTimer)}s` : "";
+  }
+  function updateStageUI() {
+    stageLabel.textContent = `${stage}/${MAX_STAGES}${gameWon ? " ✓" : ""}`;
+  }
+  function reset() {
+    score = 0; scoreLabel.textContent = "0";
+    stage = 1; gameWon = false; updateStageUI();
+    ammo = MAGAZINE_SIZE; reloadTimer = 0; updateAmmoUI();
+    transitionTimer = 0; transitionStage = 0;
+    bullets = []; puffs = []; flash = 0; elapsed = 0;
+    aim = -1.05; keys = { left: false, right: false };
+    spawnMosquito(); say("Shhh… raat ki duty shuru!", 3);
+  }
+  reset();
+
+  function startAudio() {
+    if (!audio) {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      audio = new AudioContext();
+      const osc = audio.createOscillator(), gain = audio.createGain();
+      const wobble = audio.createOscillator(), wobbleGain = audio.createGain();
+      osc.type = "sawtooth"; osc.frequency.value = 92;
+      wobble.type = "sine"; wobble.frequency.value = 23;
+      wobbleGain.gain.value = 15;
+      wobble.connect(wobbleGain); wobbleGain.connect(osc.frequency);
+      gain.gain.value = .012;
+      osc.connect(gain); gain.connect(audio.destination);
+      osc.start(); wobble.start(); buzz = gain;
+    }
+    if (audio.state === "suspended") audio.resume();
+  }
+  function soundShot() {
+    if (!audio) return;
+    const now = audio.currentTime;
+    const length = Math.floor(audio.sampleRate * .16);
+    const buffer = audio.createBuffer(1, length, audio.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+    const noise = audio.createBufferSource(), filter = audio.createBiquadFilter();
+    const gain = audio.createGain();
+    noise.buffer = buffer; filter.type = "lowpass"; filter.frequency.value = 950;
+    gain.gain.setValueAtTime(.42, now); gain.gain.exponentialRampToValueAtTime(.001, now + .16);
+    noise.connect(filter); filter.connect(gain); gain.connect(audio.destination); noise.start(now);
+    const tone = audio.createOscillator(), toneGain = audio.createGain();
+    tone.type = "triangle"; tone.frequency.setValueAtTime(170, now);
+    tone.frequency.exponentialRampToValueAtTime(55, now + .13);
+    toneGain.gain.setValueAtTime(.22, now); toneGain.gain.exponentialRampToValueAtTime(.001, now + .14);
+    tone.connect(toneGain); toneGain.connect(audio.destination); tone.start(now); tone.stop(now + .15);
+  }
+  function soundPop() {
+    if (!audio) return;
+    const now = audio.currentTime, osc = audio.createOscillator(), gain = audio.createGain();
+    osc.type = "sine"; osc.frequency.setValueAtTime(640, now);
+    osc.frequency.exponentialRampToValueAtTime(180, now + .22);
+    gain.gain.setValueAtTime(.14, now); gain.gain.exponentialRampToValueAtTime(.001, now + .24);
+    osc.connect(gain); gain.connect(audio.destination); osc.start(now); osc.stop(now + .25);
+  }
+
+  function aimAt(event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width * W;
+    const y = (event.clientY - rect.top) / rect.height * H;
+    aim = Math.atan2(y - hero.y, x - hero.x);
+    aim = Math.max(-Math.PI + .12, Math.min(-.12, aim));
+  }
+  function fire() {
+    if (gameWon || transitionTimer > 0 || reloadTimer > 0 || ammo === 0) return;
+    startAudio(); soundShot(); flash = .11;
+    ammo--; updateAmmoUI();
+    const sx = hero.x + Math.cos(aim) * 54, sy = hero.y + Math.sin(aim) * 54;
+    bullets.push({ x: sx, y: sy, vx: Math.cos(aim) * 660, vy: Math.sin(aim) * 660, life: 1.4 });
+    say(lines[Math.floor(Math.random() * lines.length)], 1.65);
+    if (ammo === 0) {
+      reloadTimer = 3 + Math.random();
+      updateAmmoUI();
+    }
+  }
+  canvas.addEventListener("pointermove", event => {
+    if (event.pointerType === "mouse" || canvas.hasPointerCapture(event.pointerId)) aimAt(event);
+  });
+  canvas.addEventListener("pointerdown", event => {
+    if (event.pointerType === "touch") {
+      event.preventDefault();
+      aimAt(event);
+      canvas.setPointerCapture(event.pointerId);
+      return;
+    }
+    if (event.button !== 0) return;
+    aimAt(event); fire();
+  });
+  canvas.addEventListener("pointerup", event => {
+    if (event.pointerType === "touch" && canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId);
+    }
+  });
+  restartButton.addEventListener("click", () => { startAudio(); reset(); });
+  touchFireButton.addEventListener("click", fire);
+  function bindAimButton(button, direction) {
+    button.addEventListener("pointerdown", event => {
+      event.preventDefault();
+      keys[direction] = true;
+      button.setPointerCapture(event.pointerId);
+    });
+    for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+      button.addEventListener(eventName, () => { keys[direction] = false; });
+    }
+  }
+  bindAimButton(aimLeftButton, "left");
+  bindAimButton(aimRightButton, "right");
+  window.addEventListener("keydown", event => {
+    if (event.code === "ArrowLeft" || event.code === "ArrowRight" || event.code === "Space") event.preventDefault();
+    if (event.code === "ArrowLeft") keys.left = true;
+    if (event.code === "ArrowRight") keys.right = true;
+    if (event.code === "Space" && !event.repeat) fire();
+  });
+  window.addEventListener("keyup", event => {
+    if (event.code === "ArrowLeft") keys.left = false;
+    if (event.code === "ArrowRight") keys.right = false;
+  });
+  window.addEventListener("blur", () => { keys.left = false; keys.right = false; });
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
+  }
+  function drawBackground(t) {
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, "#171b3d"); sky.addColorStop(.58, "#463650"); sky.addColorStop(1, "#bd7951");
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+    for (const s of stars) {
+      ctx.globalAlpha = .45 + .5 * (Math.sin(t * 2 + s.phase) + 1) / 2;
+      ctx.fillStyle = "#fff4d1"; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    const moonGlow = ctx.createRadialGradient(785, 112, 12, 785, 112, 100);
+    moonGlow.addColorStop(0, "#fff5c3"); moonGlow.addColorStop(.18, "#fff0b866"); moonGlow.addColorStop(1, "#fff0b800");
+    ctx.fillStyle = moonGlow; ctx.beginPath(); ctx.arc(785, 112, 100, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fff1bd"; ctx.beginPath(); ctx.arc(785, 112, 35, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#efdba8"; ctx.beginPath(); ctx.arc(774, 102, 4, 0, Math.PI * 2); ctx.arc(796, 121, 3, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = "#53445a"; ctx.fillRect(0, 305, W, 170);
+    ctx.fillStyle = "#80605e"; ctx.fillRect(0, 355, W, 5);
+    ctx.strokeStyle = "#d5a57455"; ctx.lineWidth = 2;
+    for (let x = 0; x <= W; x += 80) {
+      ctx.beginPath(); ctx.moveTo(x, 305); ctx.lineTo(x, 355); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - 40, 355); ctx.lineTo(x - 40, 410); ctx.stroke();
+    }
+    // Courtyard doorway and clay pots
+    ctx.fillStyle = "#312b43"; roundRect(55, 247, 118, 160, 58); ctx.fill();
+    ctx.fillStyle = "#b77a51"; ctx.beginPath(); ctx.ellipse(113, 405, 40, 8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(79, 372, 68, 32);
+    ctx.fillStyle = "#dc9b63"; ctx.beginPath(); ctx.ellipse(113, 372, 34, 8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#d88958";
+    for (const x of [853, 900]) {
+      ctx.beginPath(); ctx.ellipse(x, 436, 23, 8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x - 20, 433); ctx.quadraticCurveTo(x - 17, 403, x, 402);
+      ctx.quadraticCurveTo(x + 17, 403, x + 20, 433); ctx.fill();
+      ctx.fillStyle = "#7caf68"; ctx.beginPath(); ctx.ellipse(x - 4, 393, 7, 18, -.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x + 7, 392, 6, 16, .5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#d88958";
+    }
+    ctx.fillStyle = "#bf8056"; ctx.fillRect(0, 462, W, 138);
+    ctx.fillStyle = "#d89b67";
+    for (let x = 15; x < W; x += 75) {
+      ctx.beginPath(); ctx.ellipse(x, 491 + (x % 3) * 2, 19, 5, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.strokeStyle = "#8c594c"; ctx.lineWidth = 3;
+    for (let y = 520; y < H; y += 34) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      for (let x = (y % 2 ? 30 : 0); x < W; x += 95) {
+        ctx.beginPath(); ctx.moveTo(x, y - 16); ctx.lineTo(x, y + 16); ctx.stroke();
+      }
+    }
+  }
+  function drawCharpai() {
+    ctx.save();
+    ctx.strokeStyle = "#70412d"; ctx.lineWidth = 15; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(195, 492); ctx.lineTo(766, 492); ctx.stroke();
+    ctx.lineWidth = 11;
+    for (const x of [225, 737]) {
+      ctx.beginPath(); ctx.moveTo(x, 480); ctx.lineTo(x - 13, 566); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, 480); ctx.lineTo(x + 14, 566); ctx.stroke();
+    }
+    ctx.strokeStyle = "#f0c883"; ctx.lineWidth = 2;
+    for (let x = 231; x < 736; x += 13) {
+      ctx.beginPath(); ctx.moveTo(x, 451); ctx.lineTo(x + 5, 492); ctx.stroke();
+    }
+    for (let y = 457; y < 491; y += 9) {
+      ctx.beginPath(); ctx.moveTo(222, y); ctx.lineTo(741, y + 2); ctx.stroke();
+    }
+    ctx.fillStyle = "#8f483e"; ctx.fillRect(193, 442, 568, 14);
+    ctx.fillStyle = "#f2d8a8"; ctx.fillRect(210, 448, 530, 7);
+    ctx.restore();
+  }
+  function drawHero() {
+    ctx.save();
+    // Pillow
+    ctx.fillStyle = "#e8d2a4"; roundRect(245, 397, 125, 53, 18); ctx.fill();
+    ctx.strokeStyle = "#b99972"; ctx.lineWidth = 2; roundRect(245, 397, 125, 53, 18); ctx.stroke();
+    // Legs and white pajama cuffs
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#f8f2df"; ctx.lineWidth = 34;
+    ctx.beginPath(); ctx.moveTo(511, 434); ctx.quadraticCurveTo(604, 410, 701, 432); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(519, 454); ctx.quadraticCurveTo(613, 443, 701, 461); ctx.stroke();
+    ctx.strokeStyle = "#d5cbb6"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(691, 418); ctx.lineTo(703, 444); ctx.moveTo(690, 448); ctx.lineTo(702, 473); ctx.stroke();
+    // Kurta torso
+    ctx.fillStyle = "#fffaf0"; ctx.beginPath();
+    ctx.moveTo(375, 397); ctx.quadraticCurveTo(422, 378, 489, 399);
+    ctx.lineTo(538, 449); ctx.quadraticCurveTo(479, 473, 401, 451); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#d4c9b3"; ctx.lineWidth = 2; ctx.stroke();
+    ctx.strokeStyle = "#ddd3c1"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(426, 396); ctx.lineTo(435, 450); ctx.moveTo(420, 417); ctx.lineTo(433, 421); ctx.stroke();
+    // Arm and hand at the aiming pivot
+    ctx.strokeStyle = "#f1c49b"; ctx.lineWidth = 18;
+    ctx.beginPath(); ctx.moveTo(430, 409); ctx.quadraticCurveTo(452, 399, hero.x, hero.y); ctx.stroke();
+    ctx.fillStyle = "#eab991"; ctx.beginPath(); ctx.arc(hero.x, hero.y, 13, 0, Math.PI * 2); ctx.fill();
+    // Neck and face
+    ctx.fillStyle = "#d9a77f"; roundRect(297, 377, 42, 33, 12); ctx.fill();
+    ctx.fillStyle = "#e9b88f"; ctx.beginPath(); ctx.ellipse(311, 366, 45, 50, -.12, 0, Math.PI * 2); ctx.fill();
+    // Hair, swept high
+    ctx.fillStyle = "#24212a"; ctx.beginPath();
+    ctx.moveTo(270, 371); ctx.quadraticCurveTo(254, 332, 285, 320);
+    ctx.quadraticCurveTo(299, 290, 330, 313); ctx.quadraticCurveTo(365, 306, 357, 348);
+    ctx.quadraticCurveTo(347, 335, 330, 340); ctx.quadraticCurveTo(304, 332, 270, 371); ctx.fill();
+    // Ears
+    ctx.fillStyle = "#d9a77f"; ctx.beginPath(); ctx.ellipse(269, 370, 9, 14, 0, 0, Math.PI * 2);
+    ctx.ellipse(351, 370, 9, 14, 0, 0, Math.PI * 2); ctx.fill();
+    // Glasses
+    ctx.strokeStyle = "#28232c"; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.roundRect(278, 351, 30, 23, 7); ctx.roundRect(314, 351, 30, 23, 7);
+    ctx.moveTo(308, 360); ctx.lineTo(314, 360); ctx.stroke();
+    ctx.fillStyle = "#242631"; ctx.beginPath(); ctx.arc(294, 362, 3, 0, Math.PI * 2); ctx.arc(330, 362, 3, 0, Math.PI * 2); ctx.fill();
+    // Cheerful French beard and moustache
+    ctx.fillStyle = "#27232a"; ctx.beginPath();
+    ctx.moveTo(288, 381); ctx.quadraticCurveTo(310, 391, 334, 381);
+    ctx.quadraticCurveTo(331, 410, 310, 412); ctx.quadraticCurveTo(290, 407, 288, 381); ctx.fill();
+    ctx.fillStyle = "#29242a";
+    ctx.beginPath(); ctx.ellipse(301, 379, 12, 5, .15, Math.PI, Math.PI * 2);
+    ctx.ellipse(319, 379, 12, 5, -.15, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#fff0dc"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(302, 395); ctx.quadraticCurveTo(310, 398, 318, 394); ctx.stroke();
+    // Revolver, pointed along the current aim
+    ctx.save(); ctx.translate(hero.x, hero.y); ctx.rotate(aim);
+    ctx.fillStyle = "#414354"; roundRect(5, -6, 48, 12, 3); ctx.fill();
+    ctx.fillStyle = "#252737"; ctx.fillRect(42, -4, 24, 8);
+    ctx.fillStyle = "#a7a4a0"; ctx.fillRect(10, -5, 47, 2);
+    ctx.fillStyle = "#72503e"; roundRect(-7, 2, 18, 19, 4); ctx.fill();
+    ctx.strokeStyle = "#c8aa70"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(18, 5, 8, 0, Math.PI); ctx.stroke();
+    ctx.restore();
+    ctx.restore();
+  }
+  function drawMosquito(t) {
+    if (!mosquito.alive) return;
+    const m = mosquito, flap = Math.sin(t * 34) * .52;
+    ctx.save(); ctx.translate(m.x, m.y); ctx.rotate(Math.sin(t * 3.1) * .12);
+    // Wings flap from the thorax
+    ctx.fillStyle = "#c6e7dcbb";
+    ctx.save(); ctx.rotate(flap);
+    ctx.beginPath(); ctx.ellipse(-10, -18, 10, 22, -.45, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.save(); ctx.rotate(-flap);
+    ctx.beginPath(); ctx.ellipse(11, -18, 10, 22, .45, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = "#d9d4c5"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-2, 8); ctx.lineTo(-18, 26); ctx.moveTo(4, 9); ctx.lineTo(12, 29);
+    ctx.moveTo(8, 6); ctx.lineTo(23, 24); ctx.stroke();
+    ctx.fillStyle = "#51434b"; ctx.beginPath(); ctx.ellipse(0, 2, 17, 12, -.15, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#9c6a69"; ctx.beginPath(); ctx.ellipse(15, 2, 9, 8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#4a3943"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(22, 2); ctx.lineTo(40, -4); ctx.stroke();
+    ctx.fillStyle = "#ff6571"; ctx.beginPath(); ctx.arc(18, -1, 2.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#f7e9bc"; ctx.font = "bold 13px system-ui"; ctx.textAlign = "center";
+    ctx.fillText(m.dodgeFlash > 0 ? "DODGE!" : "BZZZ!", 0, -39);
+    ctx.restore();
+  }
+  function drawBubble() {
+    if (elapsed > bubble.until) return;
+    ctx.save(); ctx.font = "bold 16px system-ui"; ctx.textAlign = "center";
+    const width = Math.min(430, ctx.measureText(bubble.text).width + 34);
+    const x = bubble.speaker === "mosquito"
+      ? Math.max(12, Math.min(W - width - 12, mosquito.x - width / 2))
+      : 330;
+    const y = bubble.speaker === "mosquito" ? Math.max(22, mosquito.y - 92) : 292;
+    const label = bubble.speaker === "mosquito" ? "Machhar" : "Hero";
+    ctx.font = "bold 11px system-ui";
+    ctx.fillStyle = "#fff6dc"; ctx.strokeStyle = "#6d443f"; ctx.lineWidth = 3;
+    roundRect(x, y, width, 54, 13); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + width / 2 - 9, y + 54);
+    ctx.lineTo(x + width / 2, y + 64); ctx.lineTo(x + width / 2 + 9, y + 54);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#986847"; ctx.fillText(label, x + width / 2, y + 15);
+    ctx.font = "bold 15px system-ui";
+    ctx.fillStyle = "#453341"; ctx.fillText(bubble.text, x + width / 2, y + 38);
+    ctx.restore();
+  }
+  function drawStageTransition() {
+    if (transitionTimer <= 0) return;
+    const progress = 1 - transitionTimer / STAGE_TRANSITION_DURATION;
+    const fade = Math.min(1, progress * 5, (1 - progress) * 5);
+    const scaleIn = .88 + .12 * Math.min(1, progress * 5);
+    ctx.save(); ctx.globalAlpha = fade;
+    ctx.fillStyle = "#111426a8"; ctx.fillRect(0, 0, W, H);
+    ctx.translate(W / 2, H / 2); ctx.scale(scaleIn, scaleIn);
+    ctx.fillStyle = "#29243bf2"; ctx.strokeStyle = "#ffd166"; ctx.lineWidth = 4;
+    roundRect(-240, -94, 480, 188, 24); ctx.fill(); ctx.stroke();
+    ctx.textAlign = "center"; ctx.fillStyle = "#ffd166";
+    ctx.font = "900 29px system-ui";
+    ctx.fillText(gameWon ? "ALL STAGES CLEARED!" : `STAGE ${transitionStage} CLEARED!`, 0, -27);
+    ctx.fillStyle = "#fff3d3"; ctx.font = "bold 20px system-ui";
+    ctx.fillText(gameWon ? "Aangan ka champion!" : `GET READY — STAGE ${stage + 1}`, 0, 13);
+    for (let i = 0; i < 9; i++) {
+      const angle = i * Math.PI * 2 / 9 + elapsed * 1.8;
+      const radius = 175 + Math.sin(elapsed * 5 + i) * 9;
+      ctx.fillStyle = i % 2 ? "#f5a65b" : "#ffe7a0";
+      ctx.beginPath();
+      ctx.arc(Math.cos(angle) * radius, Math.sin(angle) * radius * .55, 4 + i % 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawEffects(dt) {
+    for (const b of bullets) {
+      ctx.fillStyle = "#ffe6a1"; ctx.shadowColor = "#ffb43c"; ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    }
+    if (flash > 0) {
+      ctx.save(); ctx.translate(hero.x + Math.cos(aim) * 67, hero.y + Math.sin(aim) * 67);
+      ctx.rotate(aim); ctx.fillStyle = "#fff1a0"; ctx.globalAlpha = Math.min(1, flash * 12);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(24, -10); ctx.lineTo(18, 0);
+      ctx.lineTo(27, 9); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+    for (const p of puffs) {
+      const k = 1 - p.age / .65;
+      ctx.globalAlpha = Math.max(0, k);
+      ctx.fillStyle = "#eee4d3";
+      for (let i = 0; i < 5; i++) {
+        const a = i * Math.PI * 2 / 5;
+        ctx.beginPath(); ctx.arc(p.x + Math.cos(a) * p.age * 44, p.y + Math.sin(a) * p.age * 35,
+          9 + p.age * 18, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = "#52414b"; ctx.font = "bold 17px system-ui"; ctx.textAlign = "center";
+      ctx.fillText("POOF!", p.x, p.y - p.age * 40);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function updateVisualEffects(dt) {
+    puffs.forEach(p => p.age += dt); puffs = puffs.filter(p => p.age < .65);
+    flash = Math.max(0, flash - dt);
+  }
+
+  function update(dt) {
+    elapsed += dt;
+    if (reloadTimer > 0) {
+      reloadTimer = Math.max(0, reloadTimer - dt);
+      if (reloadTimer === 0) ammo = MAGAZINE_SIZE;
+      updateAmmoUI();
+    }
+    if (transitionTimer > 0) {
+      transitionTimer = Math.max(0, transitionTimer - dt);
+      if (transitionTimer === 0 && !gameWon) {
+        stage = Math.min(stage + 1, MAX_STAGES);
+        updateStageUI();
+        spawnMosquito();
+        say(`Stage ${stage} shuru! Taiyaar?`, 1.5);
+      }
+      updateVisualEffects(dt);
+      return;
+    }
+    if (gameWon) {
+      updateVisualEffects(dt);
+      return;
+    }
+    if (keys.left) aim -= dt * 1.75;
+    if (keys.right) aim += dt * 1.75;
+    aim = Math.max(-Math.PI + .12, Math.min(-.12, aim));
+    if (mosquito.alive) {
+      const m = mosquito, s = m.speed;
+      m.dodgeCooldown = Math.max(0, m.dodgeCooldown - dt);
+      m.dodgeFlash = Math.max(0, m.dodgeFlash - dt);
+      m.targetTimer -= dt;
+      const targetDistance = Math.hypot(m.targetX - m.x, m.targetY - m.y);
+      if (m.targetTimer <= 0 || targetDistance < 24) {
+        let direction = Math.random() * Math.PI * 2;
+        const turn = Math.atan2(
+          Math.sin(direction - m.lastDirection),
+          Math.cos(direction - m.lastDirection)
+        );
+        if (Math.abs(turn) < .9) direction += turn < 0 ? -1.4 : 1.4;
+        m.lastDirection = direction;
+        const distance = 90 + Math.random() * 210;
+        m.targetX = Math.max(405, Math.min(875, m.x + Math.cos(direction) * distance));
+        m.targetY = Math.max(155, Math.min(335, m.y + Math.sin(direction) * distance));
+        m.targetTimer = Math.max(.16, .45 - (stage - 1) * .025) + Math.random() * .3;
+      }
+      const dx = m.targetX - m.x, dy = m.targetY - m.y;
+      const distance = Math.max(1, Math.hypot(dx, dy));
+      const flightSpeed = 145 * s;
+      const steering = Math.min(1, dt * 3.5);
+      m.vx += (dx / distance * flightSpeed - m.vx) * steering;
+      m.vy += (dy / distance * flightSpeed - m.vy) * steering;
+      m.x += m.vx * dt;
+      m.y += m.vy * dt;
+      if (m.x < 390) { m.x = 390; m.vx = Math.abs(m.vx); }
+      if (m.x > 885) { m.x = 885; m.vx = -Math.abs(m.vx); }
+      if (m.y < 145) { m.y = 145; m.vy = Math.abs(m.vy); }
+      if (m.y > 340) { m.y = 340; m.vy = -Math.abs(m.vy); }
+    }
+    for (const b of bullets) {
+      const oldX = b.x, oldY = b.y;
+      b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+      if (mosquito.alive) {
+        const segmentX = b.x - oldX, segmentY = b.y - oldY;
+        const len2 = segmentX * segmentX + segmentY * segmentY;
+        const q = len2 ? Math.max(0, Math.min(1, ((mosquito.x - oldX) * segmentX + (mosquito.y - oldY) * segmentY) / len2)) : 0;
+        const nearX = oldX + q * segmentX, nearY = oldY + q * segmentY;
+        let distanceSquared = (mosquito.x - nearX) ** 2 + (mosquito.y - nearY) ** 2;
+        if (!b.dodgeChecked && mosquito.dodgeCooldown === 0 && distanceSquared < 92 ** 2) {
+          b.dodgeChecked = true;
+          if (Math.random() < .16 + (stage - 1) * .025) {
+            const bulletLength = Math.max(1, Math.hypot(segmentX, segmentY));
+            const side = Math.random() < .5 ? -1 : 1;
+            const evadeX = -segmentY / bulletLength * side;
+            const evadeY = segmentX / bulletLength * side;
+            mosquito.x = Math.max(390, Math.min(885, mosquito.x + evadeX * 36));
+            mosquito.y = Math.max(145, Math.min(340, mosquito.y + evadeY * 36));
+            mosquito.vx += evadeX * 280; mosquito.vy += evadeY * 280;
+            mosquito.targetX = Math.max(405, Math.min(875, mosquito.x + evadeX * 130));
+            mosquito.targetY = Math.max(155, Math.min(335, mosquito.y + evadeY * 130));
+            mosquito.targetTimer = .55;
+            mosquito.dodgeCooldown = .8; mosquito.dodgeFlash = .5;
+            b.dodged = true;
+            say("Wah hero, goli hawa se baat kar rahi hai!", 1.8, "mosquito");
+            distanceSquared = (mosquito.x - nearX) ** 2 + (mosquito.y - nearY) ** 2;
+          }
+        }
+        if (distanceSquared < 27 ** 2) {
+          transitionStage = stage;
+          mosquito.alive = false; puffs.push({ x: mosquito.x, y: mosquito.y, age: 0 });
+          score++; scoreLabel.textContent = String(score);
+          if (score >= MAX_STAGES) gameWon = true;
+          updateStageUI(); soundPop();
+          transitionTimer = STAGE_TRANSITION_DURATION;
+          for (const activeBullet of bullets) activeBullet.life = 0;
+          say(hitLines[Math.floor(Math.random() * hitLines.length)], 2.4, "hero");
+          b.life = 0;
+        }
+      }
+    }
+    bullets = bullets.filter(b => b.life > 0 && b.x > -20 && b.x < W + 20 && b.y > -20);
+    updateVisualEffects(dt);
+  }
+  function frame(now) {
+    const dt = Math.min(.035, (now - lastTime) / 1000 || 0); lastTime = now;
+    update(dt);
+    ctx.setTransform(pixelRatio * scale, 0, 0, pixelRatio * scale, 0, 0);
+    drawBackground(elapsed); drawCharpai(); drawHero(); drawMosquito(elapsed); drawEffects(dt); drawBubble(); drawStageTransition();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
