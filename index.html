@@ -191,7 +191,7 @@
   let ammo = MAGAZINE_SIZE, reloadTimer = 0, aim = -1.05;
   let keys = { left: false, right: false };
   let mosquito, bullets = [], puffs = [], flash = 0;
-  let transitionTimer = 0, transitionStage = 0;
+  let transitionTimer = 0, transitionStage = 0, finalBossEntryTimer = 0;
   let bubble = { text: "Shhh… raat ki duty shuru!", until: 3.5 };
   let elapsed = 0, lastTime = 0, audio = null, buzz = null;
   let scale = 1, pixelRatio = 1;
@@ -229,7 +229,7 @@
     score = 0; scoreLabel.textContent = "0";
     stage = 1; gameWon = false; updateStageUI();
     ammo = MAGAZINE_SIZE; reloadTimer = 0; updateAmmoUI();
-    transitionTimer = 0; transitionStage = 0;
+    transitionTimer = 0; transitionStage = 0; finalBossEntryTimer = 0;
     bullets = []; puffs = []; flash = 0; elapsed = 0;
     aim = -1.05; keys = { left: false, right: false };
     spawnMosquito(); say("Shhh… raat ki duty shuru!", 3);
@@ -541,6 +541,22 @@
     }
     ctx.restore();
   }
+  function drawFinalBossEntry() {
+    if (finalBossEntryTimer <= 0) return;
+    const progress = 1 - finalBossEntryTimer / 2.4;
+    ctx.save();
+    ctx.fillStyle = "#120e1db8"; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ff655f";
+    ctx.shadowColor = "#ff3b30"; ctx.shadowBlur = 28 * Math.sin(progress * Math.PI);
+    ctx.font = "900 68px system-ui";
+    ctx.globalAlpha = Math.min(1, progress * 6);
+    ctx.fillText("FINAL BOSS", W / 2, H / 2 - 12);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#fff3d3"; ctx.font = "bold 22px system-ui";
+    ctx.fillText("Harami machhar ki baari aayi!", W / 2, H / 2 + 38);
+    ctx.restore();
+  }
   function drawEffects(dt) {
     for (const b of bullets) {
       ctx.fillStyle = "#ffe6a1"; ctx.shadowColor = "#ffb43c"; ctx.shadowBlur = 12;
@@ -574,6 +590,7 @@
 
   function update(dt) {
     elapsed += dt;
+    finalBossEntryTimer = Math.max(0, finalBossEntryTimer - dt);
     if (reloadTimer > 0) {
       reloadTimer = Math.max(0, reloadTimer - dt);
       if (reloadTimer === 0) ammo = MAGAZINE_SIZE;
@@ -585,7 +602,12 @@
         stage = Math.min(stage + 1, MAX_STAGES);
         updateStageUI();
         spawnMosquito();
-        say(`Stage ${stage} shuru! Taiyaar?`, 1.5);
+        if (stage === MAX_STAGES) {
+          finalBossEntryTimer = 2.4;
+          say("FINAL BOSS machhar aa gaya!", 2.4);
+        } else {
+          say(`Stage ${stage} shuru! Taiyaar?`, 1.5);
+        }
       }
       updateVisualEffects(dt);
       return;
@@ -677,7 +699,7 @@
     const dt = Math.min(.035, (now - lastTime) / 1000 || 0); lastTime = now;
     update(dt);
     ctx.setTransform(pixelRatio * scale, 0, 0, pixelRatio * scale, 0, 0);
-    drawBackground(elapsed); drawCharpai(); drawHero(); drawMosquito(elapsed); drawEffects(dt); drawBubble(); drawStageTransition();
+    drawBackground(elapsed); drawCharpai(); drawHero(); drawMosquito(elapsed); drawEffects(dt); drawBubble(); drawStageTransition(); drawFinalBossEntry();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
