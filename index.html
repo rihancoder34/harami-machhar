@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Harami Machhar — Aangan After Dark</title>
 <style>
   :root {
@@ -82,6 +82,7 @@
   canvas { display: block; width: 100%; aspect-ratio: 8 / 5; cursor: crosshair; }
   .touch-controls { display: none; }
   .mobile-hint { display: none; }
+  .fullscreen-button { display: none; }
   .hint {
     position: absolute;
     left: 50%;
@@ -108,6 +109,7 @@
   }
   @media (max-width: 760px) {
     canvas { touch-action: none; cursor: default; }
+    .fullscreen-button { display: inline-flex; align-items: center; gap: 5px; }
     .desktop-hint { display: none; }
     .mobile-hint { display: block; }
     .touch-controls {
@@ -130,6 +132,47 @@
       font-size: 1rem;
     }
   }
+  .game:fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-width: none;
+    margin: 0;
+    padding: max(env(safe-area-inset-top), 8px) max(env(safe-area-inset-right), 8px)
+      max(env(safe-area-inset-bottom), 8px) max(env(safe-area-inset-left), 8px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 50% 0%, #49345d 0, #211d37 48%, #121522 100%);
+  }
+  .game:fullscreen header { flex: 0 0 auto; margin: 0; gap: 8px; }
+  .game:fullscreen h1 { font-size: clamp(1rem, 3.8vw, 1.6rem); }
+  .game:fullscreen .hud { flex-wrap: nowrap; gap: 6px; }
+  .game:fullscreen .score, .game:fullscreen .stage-count,
+  .game:fullscreen .ammo, .game:fullscreen .hud button {
+    padding: 7px 10px;
+    font-size: clamp(.72rem, 2.4vw, .95rem);
+  }
+  .game:fullscreen .stage { flex: 1 1 auto; min-height: 0; display: flex; }
+  .game:fullscreen canvas { width: 100%; height: 100%; aspect-ratio: auto; }
+  .game:fullscreen .hint { display: none; }
+  .game:fullscreen .touch-controls {
+    display: grid;
+    flex: 0 0 auto;
+    grid-template-columns: 1fr 1.2fr 1fr;
+    gap: 10px;
+    margin: 0;
+  }
+  .game:fullscreen .touch-controls button { min-height: clamp(46px, 8dvh, 64px); }
+  .game:fullscreen .subline { display: none; }
+  @media (max-width: 760px) {
+    .game:fullscreen header { align-items: center; flex-wrap: nowrap; }
+    .game:fullscreen h1 { flex: 0 1 auto; }
+  }
 </style>
 </head>
 <body>
@@ -140,6 +183,7 @@
       <div class="score" aria-live="polite">Score: <span id="score">0</span></div>
       <div class="stage-count" aria-live="polite">Stage: <span id="stage">1/10</span></div>
       <div class="ammo" id="ammo" aria-live="polite">Ammo: <span id="ammoCount">7</span><span id="reloadStatus"></span></div>
+      <button id="fullscreen" class="fullscreen-button" type="button" aria-label="Enter fullscreen">⛶ <span>Full</span></button>
       <button id="restart" type="button">Restart ↻</button>
     </div>
   </header>
@@ -169,6 +213,8 @@
   const touchFireButton = document.querySelector("#touchFire");
   const aimLeftButton = document.querySelector("#aimLeft");
   const aimRightButton = document.querySelector("#aimRight");
+  const fullscreenButton = document.querySelector("#fullscreen");
+  const gameRoot = document.querySelector(".game");
   const W = 960, H = 600;
   const MAGAZINE_SIZE = 7;
   const MAX_STAGES = 10;
@@ -194,16 +240,30 @@
   let transitionTimer = 0, transitionStage = 0, finalBossEntryTimer = 0;
   let bubble = { text: "Shhh… raat ki duty shuru!", until: 3.5 };
   let elapsed = 0, lastTime = 0, audio = null, buzz = null;
-  let scale = 1, pixelRatio = 1;
+  let scale = 1, pixelRatio = 1, offsetX = 0, offsetY = 0;
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
     pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(rect.width * pixelRatio);
     canvas.height = Math.round(rect.height * pixelRatio);
-    scale = rect.width / W;
+    scale = Math.min(rect.width / W, rect.height / H);
+    offsetX = (rect.width - W * scale) / 2;
+    offsetY = (rect.height - H * scale) / 2;
   }
   window.addEventListener("resize", resize);
+  window.visualViewport?.addEventListener("resize", resize);
+  document.addEventListener("fullscreenchange", () => {
+    const fullscreen = document.fullscreenElement === gameRoot;
+    fullscreenButton.setAttribute("aria-label", fullscreen ? "Exit fullscreen" : "Enter fullscreen");
+    fullscreenButton.querySelector("span").textContent = fullscreen ? "Exit" : "Full";
+    resize();
+    if (fullscreen) {
+      screen.orientation?.lock?.("landscape").catch(() => {});
+    } else {
+      screen.orientation?.unlock?.();
+    }
+  });
   resize();
 
   function spawnMosquito() {
@@ -282,8 +342,8 @@
 
   function aimAt(event) {
     const rect = canvas.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / rect.width * W;
-    const y = (event.clientY - rect.top) / rect.height * H;
+    const x = Math.max(0, Math.min(W, (event.clientX - rect.left - offsetX) / scale));
+    const y = Math.max(0, Math.min(H, (event.clientY - rect.top - offsetY) / scale));
     aim = Math.atan2(y - hero.y, x - hero.x);
     aim = Math.max(-Math.PI + .12, Math.min(-.12, aim));
   }
@@ -318,6 +378,22 @@
     }
   });
   restartButton.addEventListener("click", () => { startAudio(); reset(); });
+  fullscreenButton.addEventListener("click", async () => {
+    startAudio();
+    try {
+      if (document.fullscreenElement === gameRoot) {
+        await document.exitFullscreen();
+      } else if (gameRoot.requestFullscreen) {
+        await gameRoot.requestFullscreen();
+      } else if (gameRoot.webkitRequestFullscreen) {
+        gameRoot.webkitRequestFullscreen();
+      } else {
+        say("Is browser mein fullscreen available nahi hai.", 2.2);
+      }
+    } catch (error) {
+      say("Fullscreen ke liye browser permission chahiye.", 2.2);
+    }
+  });
   touchFireButton.addEventListener("click", fire);
   function bindAimButton(button, direction) {
     button.addEventListener("pointerdown", event => {
@@ -698,7 +774,8 @@
   function frame(now) {
     const dt = Math.min(.035, (now - lastTime) / 1000 || 0); lastTime = now;
     update(dt);
-    ctx.setTransform(pixelRatio * scale, 0, 0, pixelRatio * scale, 0, 0);
+    ctx.setTransform(pixelRatio * scale, 0, 0, pixelRatio * scale,
+      pixelRatio * offsetX, pixelRatio * offsetY);
     drawBackground(elapsed); drawCharpai(); drawHero(); drawMosquito(elapsed); drawEffects(dt); drawBubble(); drawStageTransition(); drawFinalBossEntry();
     requestAnimationFrame(frame);
   }
