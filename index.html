@@ -239,7 +239,8 @@
   let mosquito, bullets = [], puffs = [], flash = 0;
   let transitionTimer = 0, transitionStage = 0, finalBossEntryTimer = 0;
   let bubble = { text: "Shhh… raat ki duty shuru!", until: 3.5 };
-  let elapsed = 0, lastTime = 0, audio = null, buzz = null;
+  let elapsed = 0, lastTime = 0, audio = null, buzz = null, mosquitoPanner = null, buzzEnabled = false;
+  let audioOutput = null, roomReverb = null;
   let scale = 1, pixelRatio = 1, offsetX = 0, offsetY = 0;
 
   function resize() {
@@ -301,35 +302,123 @@
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
       audio = new AudioContext();
-      const osc = audio.createOscillator(), gain = audio.createGain();
-      const wobble = audio.createOscillator(), wobbleGain = audio.createGain();
-      osc.type = "sawtooth"; osc.frequency.value = 92;
-      wobble.type = "sine"; wobble.frequency.value = 23;
-      wobbleGain.gain.value = 15;
-      wobble.connect(wobbleGain); wobbleGain.connect(osc.frequency);
-      gain.gain.value = .012;
-      osc.connect(gain); gain.connect(audio.destination);
-      osc.start(); wobble.start(); buzz = gain;
+      audioOutput = audio.createDynamicsCompressor();
+      audioOutput.threshold.value = -18;
+      audioOutput.knee.value = 12;
+      audioOutput.ratio.value = 4;
+      audioOutput.attack.value = .003;
+      audioOutput.release.value = .18;
+      audioOutput.connect(audio.destination);
+
+      const impulseLength = Math.floor(audio.sampleRate * .38);
+      const impulse = audio.createBuffer(2, impulseLength, audio.sampleRate);
+      for (let channel = 0; channel < impulse.numberOfChannels; channel++) {
+        const samples = impulse.getChannelData(channel);
+        for (let i = 0; i < impulseLength; i++) {
+          samples[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / impulseLength, 3);
+        }
+      }
+      roomReverb = audio.createConvolver();
+      roomReverb.buffer = impulse;
+      const reverbLevel = audio.createGain();
+      reverbLevel.gain.value = .16;
+      roomReverb.connect(reverbLevel);
+      reverbLevel.connect(audioOutput);
+
+      const buzzFilter = audio.createBiquadFilter();
+      buzzFilter.type = "bandpass";
+      buzzFilter.frequency.value = 1050;
+      buzzFilter.Q.value = .8;
+      const buzzTone = audio.createGain();
+      buzzTone.gain.value = .017;
+      const buzzMod = audio.createGain();
+      buzzMod.gain.value = .009;
+      const buzzOscA = audio.createOscillator();
+      const buzzOscB = audio.createOscillator();
+      const buzzHarmonic = audio.createOscillator();
+      const wingBeat = audio.createOscillator();
+      buzzOscA.type = "sawtooth"; buzzOscA.frequency.value = 205;
+      buzzOscB.type = "sawtooth"; buzzOscB.frequency.value = 211;
+      buzzHarmonic.type = "triangle"; buzzHarmonic.frequency.value = 418;
+      wingBeat.type = "sine"; wingBeat.frequency.value = 84;
+      wingBeat.connect(buzzMod); buzzMod.connect(buzzTone.gain);
+      buzzOscA.connect(buzzFilter); buzzOscB.connect(buzzFilter); buzzHarmonic.connect(buzzFilter);
+      buzzFilter.connect(buzzTone);
+      buzz = audio.createGain();
+      buzz.gain.value = 0;
+      mosquitoPanner = audio.createStereoPanner();
+      buzzTone.connect(buzz); buzz.connect(mosquitoPanner); mosquitoPanner.connect(audioOutput);
+      buzzOscA.start(); buzzOscB.start(); buzzHarmonic.start(); wingBeat.start();
     }
     if (audio.state === "suspended") audio.resume();
+    updateAudioSpatial();
+  }
+  function updateAudioSpatial() {
+    if (!audio || !buzz) return;
+    const active = mosquito.alive && !gameWon;
+    if (active !== buzzEnabled) {
+      buzz.gain.setTargetAtTime(active ? .75 : 0, audio.currentTime, .12);
+      buzzEnabled = active;
+    }
+    if (active && mosquitoPanner) {
+      const pan = Math.max(-1, Math.min(1, (mosquito.x / W) * 2 - 1));
+      mosquitoPanner.pan.setTargetAtTime(pan, audio.currentTime, .16);
+    }
   }
   function soundShot() {
     if (!audio) return;
     const now = audio.currentTime;
-    const length = Math.floor(audio.sampleRate * .16);
+    const length = Math.floor(audio.sampleRate * .32);
     const buffer = audio.createBuffer(1, length, audio.sampleRate);
     const data = buffer.getChannelData(0);
-    for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / length);
-    const noise = audio.createBufferSource(), filter = audio.createBiquadFilter();
-    const gain = audio.createGain();
-    noise.buffer = buffer; filter.type = "lowpass"; filter.frequency.value = 950;
-    gain.gain.setValueAtTime(.42, now); gain.gain.exponentialRampToValueAtTime(.001, now + .16);
-    noise.connect(filter); filter.connect(gain); gain.connect(audio.destination); noise.start(now);
-    const tone = audio.createOscillator(), toneGain = audio.createGain();
-    tone.type = "triangle"; tone.frequency.setValueAtTime(170, now);
-    tone.frequency.exponentialRampToValueAtTime(55, now + .13);
-    toneGain.gain.setValueAtTime(.22, now); toneGain.gain.exponentialRampToValueAtTime(.001, now + .14);
-    tone.connect(toneGain); toneGain.connect(audio.destination); tone.start(now); tone.stop(now + .15);
+    for (let i = 0; i < length; i++) {
+      const time = i / audio.sampleRate;
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-time * 17);
+    }
+
+    const noise = audio.createBufferSource();
+    noise.buffer = buffer;
+    const crackFilter = audio.createBiquadFilter();
+    crackFilter.type = "highpass"; crackFilter.frequency.value = 850;
+    const crackGain = audio.createGain();
+    crackGain.gain.setValueAtTime(.8, now);
+    crackGain.gain.exponentialRampToValueAtTime(.001, now + .11);
+    noise.connect(crackFilter); crackFilter.connect(crackGain);
+    connectShotLayer(crackGain, .22);
+
+    const bodyFilter = audio.createBiquadFilter();
+    bodyFilter.type = "lowpass"; bodyFilter.frequency.setValueAtTime(520, now);
+    bodyFilter.frequency.exponentialRampToValueAtTime(150, now + .22);
+    const bodyGain = audio.createGain();
+    bodyGain.gain.setValueAtTime(.68, now);
+    bodyGain.gain.exponentialRampToValueAtTime(.001, now + .26);
+    noise.connect(bodyFilter); bodyFilter.connect(bodyGain);
+    connectShotLayer(bodyGain, .3);
+    noise.start(now); noise.stop(now + .32);
+
+    const thump = audio.createOscillator(), thumpGain = audio.createGain();
+    thump.type = "sine"; thump.frequency.setValueAtTime(115, now);
+    thump.frequency.exponentialRampToValueAtTime(48, now + .18);
+    thumpGain.gain.setValueAtTime(.4, now);
+    thumpGain.gain.exponentialRampToValueAtTime(.001, now + .2);
+    thump.connect(thumpGain); connectShotLayer(thumpGain, .12);
+    thump.start(now); thump.stop(now + .21);
+
+    const click = audio.createOscillator(), clickGain = audio.createGain();
+    click.type = "square"; click.frequency.setValueAtTime(1250, now + .035);
+    click.frequency.exponentialRampToValueAtTime(620, now + .055);
+    clickGain.gain.setValueAtTime(.045, now + .035);
+    clickGain.gain.exponentialRampToValueAtTime(.001, now + .065);
+    click.connect(clickGain); clickGain.connect(audioOutput);
+    click.start(now + .035); click.stop(now + .07);
+  }
+  function connectShotLayer(layer, reverbAmount) {
+    layer.connect(audioOutput);
+    if (reverbAmount > 0) {
+      const send = audio.createGain();
+      send.gain.value = reverbAmount;
+      layer.connect(send); send.connect(roomReverb);
+    }
   }
   function soundPop() {
     if (!audio) return;
@@ -337,7 +426,7 @@
     osc.type = "sine"; osc.frequency.setValueAtTime(640, now);
     osc.frequency.exponentialRampToValueAtTime(180, now + .22);
     gain.gain.setValueAtTime(.14, now); gain.gain.exponentialRampToValueAtTime(.001, now + .24);
-    osc.connect(gain); gain.connect(audio.destination); osc.start(now); osc.stop(now + .25);
+    osc.connect(gain); gain.connect(audioOutput); osc.start(now); osc.stop(now + .25);
   }
 
   function aimAt(event) {
@@ -666,6 +755,7 @@
 
   function update(dt) {
     elapsed += dt;
+    updateAudioSpatial();
     finalBossEntryTimer = Math.max(0, finalBossEntryTimer - dt);
     if (reloadTimer > 0) {
       reloadTimer = Math.max(0, reloadTimer - dt);
